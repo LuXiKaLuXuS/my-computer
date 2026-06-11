@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Computer Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto p-6">
+    <header class="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight">My Computer</h1>
+        <p class="text-slate-400">Multi-agent orchestrator dashboard v1.5</p>
+      </div>
+      <div id="health-badge" class="px-3 py-1 rounded-full text-sm bg-slate-800 text-slate-300">checking...</div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <section class="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 class="font-semibold mb-4">Autentizace</h2>
+        <div class="space-y-3">
+          <input id="email" type="email" placeholder="Email" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" />
+          <input id="password" type="password" placeholder="Heslo" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" />
+          <input id="api-key" type="text" placeholder="API klíč (volitelné)" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" />
+        </div>
+        <div class="flex gap-2 mt-4">
+          <button onclick="login()" class="flex-1 bg-blue-600 hover:bg-blue-500 rounded-lg py-2">Přihlásit</button>
+          <button onclick="register()" class="flex-1 bg-slate-700 hover:bg-slate-600 rounded-lg py-2">Registrovat</button>
+        </div>
+        <p id="auth-status" class="text-sm text-slate-400 mt-3"></p>
+      </section>
+
+      <section class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 class="font-semibold mb-4">Nový goal</h2>
+        <textarea id="goal" rows="4" placeholder="Popiš úkol pro orchestrátor..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 mb-3"></textarea>
+        <div class="flex flex-wrap gap-3 items-center">
+          <select id="mode" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+            <option value="ensemble">Ensemble</option>
+            <option value="single">Single</option>
+            <option value="parallel">Parallel</option>
+          </select>
+          <button onclick="runGoal()" class="bg-emerald-600 hover:bg-emerald-500 px-5 py-2 rounded-lg font-medium">Spustit goal</button>
+          <button onclick="loadGoals()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg">Obnovit historii</button>
+        </div>
+        <pre id="result" class="mt-4 bg-slate-800 rounded-lg p-4 text-xs overflow-auto max-h-56 text-slate-300 hidden"></pre>
+      </section>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 class="font-semibold mb-4">Historie goalů</h2>
+        <div id="goals-list" class="space-y-2 text-sm max-h-80 overflow-auto"></div>
+      </section>
+      <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h2 class="font-semibold mb-4">Paměť – timeline</h2>
+        <button onclick="loadTimeline()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg mb-3 text-sm">Načíst timeline</button>
+        <div id="timeline" class="space-y-2 text-sm max-h-80 overflow-auto"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    let accessToken = localStorage.getItem('mc_token') || '';
+
+    function headers() {
+      const h = { 'Content-Type': 'application/json' };
+      const apiKey = document.getElementById('api-key').value;
+      if (apiKey) h['X-API-Key'] = apiKey;
+      else if (accessToken) h['Authorization'] = `Bearer ${accessToken}`;
+      return h;
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const badge = document.getElementById('health-badge');
+        badge.textContent = `health: ${data.status}`;
+        badge.className = 'px-3 py-1 rounded-full text-sm ' + (
+          data.status === 'healthy' ? 'bg-emerald-900 text-emerald-200' : 'bg-amber-900 text-amber-200'
+        );
+      } catch {
+        document.getElementById('health-badge').textContent = 'offline';
+      }
+    }
+
+    async function login() {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        accessToken = data.access_token;
+        localStorage.setItem('mc_token', accessToken);
+        document.getElementById('auth-status').textContent = 'Přihlášen ✓';
+        loadGoals();
+      } else {
+        document.getElementById('auth-status').textContent = data.detail || 'Chyba přihlášení';
+      }
+    }
+
+    async function register() {
+      const email = document.getElementById('email').value;
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          username: email.split('@')[0],
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        accessToken = data.access_token;
+        localStorage.setItem('mc_token', accessToken);
+        document.getElementById('auth-status').textContent = 'Registrován ✓';
+        loadGoals();
+      } else {
+        document.getElementById('auth-status').textContent = JSON.stringify(data.detail || data);
+      }
+    }
+
+    async function runGoal() {
+      const res = await fetch('/api/goals/run', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+          goal: document.getElementById('goal').value,
+          mode: document.getElementById('mode').value,
+        }),
+      });
+      const data = await res.json();
+      const el = document.getElementById('result');
+      el.classList.remove('hidden');
+      el.textContent = JSON.stringify(data, null, 2);
+      loadGoals();
+      loadTimeline();
+    }
+
+    async function loadGoals() {
+      const res = await fetch('/api/goals', { headers: headers() });
+      if (!res.ok) return;
+      const goals = await res.json();
+      const el = document.getElementById('goals-list');
+      el.innerHTML = goals.map(g => `
+        <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+          <div class="flex justify-between gap-2">
+            <span class="font-medium truncate">${g.title}</span>
+            <span class="text-xs px-2 py-0.5 rounded ${g.status === 'completed' ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-700'}">${g.status}</span>
+          </div>
+          <div class="text-xs text-slate-400 mt-1">${g.mode} · ${g.tokens_used} tokens · ${new Date(g.created_at).toLocaleString()}</div>
+        </div>
+      `).join('') || '<p class="text-slate-500">Žádné goaly</p>';
+    }
+
+    async function loadTimeline() {
+      const res = await fetch('/api/memory/timeline?limit=30', { headers: headers() });
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('timeline').innerHTML = (data.items || []).map(i => `
+        <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+          <div class="text-blue-400 text-xs">${i.step_type} · ${new Date(i.created_at).toLocaleString()}</div>
+          <div class="mt-1 text-slate-300">${i.content.substring(0, 180)}${i.content.length > 180 ? '...' : ''}</div>
+        </div>
+      `).join('') || '<p class="text-slate-500">Prázdná timeline</p>';
+    }
+
+    checkHealth();
+    if (accessToken) {
+      document.getElementById('auth-status').textContent = 'Token načten z localStorage';
+      loadGoals();
+    }
+  </script>
+</body>
+</html>
