@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Data & runtime
+.data/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Chroma / local stores
+chroma_data/
