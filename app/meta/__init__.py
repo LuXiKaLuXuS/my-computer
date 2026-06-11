@@ -1,0 +1,1 @@
+"""Meta-agent module for safe self-improvement (v2.0 foundations)."""
